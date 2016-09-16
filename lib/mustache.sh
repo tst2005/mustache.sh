@@ -47,7 +47,7 @@ _mustache() {
 
 	# The `read` builtin consumes one line at a time but by now each line
 	# contains only a single character.
-	while read _M_C; do
+	while read -r _M_C; do
 		echo " _M_C: $_M_C (${#_M_C}), _M_STATE: $_M_STATE" >&3
 		echo "$_M_C" >&5
 		case "$_M_STATE" in
@@ -140,10 +140,11 @@ _mustache_cat() {
 
 # Execute a tag surrounded by backticks.  Remove the backticks first.
 _mustache_cmd() {
-	_M_CMD="$*"
+	local _M_CMD
+	_M_CMD="$1"
 	_M_CMD="${_M_CMD#"\`"}"
 	_M_CMD="${_M_CMD%"\`"}"
-	sh -c "$_M_CMD"
+	( eval "$_M_CMD" )
 }
 
 # Print an error message and GTFO.  The message is the concatenation
@@ -155,6 +156,7 @@ _mustache_die() {
 
 # Paper over differences between GNU sed and BSD sed
 _mustache_sed() {
+	local _M_NEWLINE
 	_M_NEWLINE="$(printf '\n')"
 	set +e
 	sed -r </dev/null >/dev/null 2>&1
@@ -162,8 +164,8 @@ _mustache_sed() {
 	_M_STATUS=$?
 	set -e
 	if [ $_M_STATUS -eq 1 ]
-	then sed -E "s/./&\\$_M_NEWLINE/g; s/\\\\/\\\\\\\\/g"		#FIXME
-	else sed -r "s/./&\\n/g; s/\\\\/\\\\\\\\/g"			#FIXME
+	then sed -E 's/./&\n/g' # BSD
+	else sed -r 's/./&\n/g' # GNU
 	fi
 }
 
@@ -183,8 +185,8 @@ _mustache_tag() {
 		# otherwise for this character.
 		("variable")
 			case "$_M_TAG" in
-				("\`"*"\`") _mustache_cmd "$_M_TAG";;		#FIXME
-				(*) eval printf "%s" "\"\$$_M_TAG\"";;
+				('`'*'`') _mustache_cmd "$_M_TAG" ;;
+				(*) eval 'printf %s "$'"$_M_TAG"'"' ;;
 			esac >&$_M_FD
 		;;
 
@@ -200,16 +202,16 @@ _mustache_tag() {
 		# Sections not being expanded are redirected to `/dev/null`.
 		('#'|'^')
 			echo " # _M_TAG: $_M_TAG" >&3
-			_M_TAG_V="$(eval printf "%s" "\"\$$_M_TAG\"")"
+			_M_TAG_V="$(eval 'printf %s "$'"$_M_TAG"'"')"
 			case "$_M_TAG_TYPE" in
 				('#') [ -z "$_M_TAG_V" ] && _M_FD=4;;
 				('^') [ -n "$_M_TAG_V" ] && _M_FD=4;;
 			esac
 			case "$_M_TAG" in
-				("\`"*"\`")
+				('`'*'`')
 					_M_CAPTURE="$(_M_SECTION_TAG="$_M_TAG" _mustache 5>&1 >&4)"
 					echo " _M_CAPTURE: $_M_CAPTURE" | _mustache_cat >&3
-					_mustache_cmd "$_M_TAG" | while read _M_LINE; do
+					_mustache_cmd "$_M_TAG" | while read -r _M_LINE; do
 						echo " _M_LINE: $_M_LINE" >&3
 						(
 							_M_SECTION_TAG="$_M_TAG"
